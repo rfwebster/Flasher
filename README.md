@@ -1,4 +1,4 @@
-# JEOLBeamShower
+# FlashLogger
 PyJEM script to log the gun conditions following a flash of the cold FEG gun and save files to a csv file.
 
 **Not yet tested live on a microscope**, but intended for a JEOL F200 STEM.
