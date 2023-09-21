@@ -31,11 +31,12 @@ class FlashListener(threading.Thread):
         while True:
             # Determine the flash type based on the current emission and last flash time
             flash_type = self.window.get_flash_type()
+            self.window.update_instruction_label(flash_type)
 
             # Update the status label
-            self.window.set_status("Emission Current: {}uA".format(self.window.get_emission()))
+            self.window.set_status("Emission: {}uA \t Last flash: {}".format(self.window.get_emission(),
+                                                                             self.window.read_last_line(LOG_FILE)[-2]))
 
-            self.window.update_instruction_label(flash_type)
 
             # Sleep for one minute
             time.sleep(60)
@@ -46,6 +47,7 @@ class Window(tk.Tk):
 
     HT = TEM3.HT3()
     gun = TEM3.GUN3()
+    feg = TEM3.FEG3()
     stage = TEM3.Stage3()
 
     csv_header = ["datetime", "user",
@@ -71,7 +73,8 @@ class Window(tk.Tk):
         self.flash_listener.start()
 
     def setup_ui(self):
-        
+        photo = tk.PhotoImage(file = "tkinter/ui/icon.ico")
+        self.iconphoto(False, photo)
         s = ttk.Style()
         s.theme_use('vista')
 
@@ -116,6 +119,7 @@ class Window(tk.Tk):
         self.flash_label.pack(side=tk.LEFT, padx=PAD_X, pady=PAD_Y)
         self.comboBox = ttk.Combobox(self.frame2, values=["High Flash", "Low Flash", "No Flash"], state="readonly", font=label_font)
         self.comboBox.pack(fill=tk.X, padx=PAD_X, pady=PAD_Y, expand=True)
+        self.comboBox.current(0)
        
         self.frame3 = tk.Frame(self.mainframe)
         self.frame3.pack(fill=tk.X)  
@@ -128,21 +132,16 @@ class Window(tk.Tk):
         self.ln2_checkbutton.pack(padx=PAD_X, pady=PAD_Y)
         self.checkbuttons_var.append(self.ln2_checkbutton_var)
 
-
         self.notebox = tk.Text(self.mainframe, height=5, width=40, font=label_font)
         self.set_notebox_text()
         self.notebox.bind("<FocusIn>", self.clear_notebox_text)
-
         self.notebox.pack(padx=PAD_X, pady=PAD_Y)
 
         self.instruction_label = ttk.Label(self.mainframe, text="Unknown State :`(", style='unknown.TLabel')
         self.instruction_label.pack(fill='both', padx=PAD_X, pady=PAD_Y, ipadx=PAD_X, ipady=PAD_Y)
 
-
-
-        self.startButton = ttk.Button(self.mainframe, text="Log!", command=self.go, style='log.TButton')
+        self.startButton = ttk.Button(self.mainframe, text="Log it!", command=self.go, style='log.TButton')
         self.startButton.pack(fill='both', padx=PAD_X, pady=2*PAD_Y)
-
 
         #progress bar
         self.status_bar = ttk.Label(self, text="", relief=tk.FLAT, anchor=tk.W)
@@ -251,6 +250,9 @@ class Window(tk.Tk):
     def get_emission(self):
         return self.gun.GetEmissionCurrentValue()
 
+    def get_emission_status(self):
+        return self.feg.GetEmissionOnStatus()
+
     def go(self):
     #     # Method to retrieve the current values of the user input fields
     #     # and add a new line to the CSV file using add_line_to_csv, then reset the input fields
@@ -283,14 +285,14 @@ class Window(tk.Tk):
         current_time = datetime.now()
         current_emission = self.get_emission()
     
-        if last_flash_time.date() == current_time.date(): # has there been a flahs today
+        if last_flash_time.date() == current_time.date(): # has there been a flash today
             # Check if the emission value is above 12
             if float(last_entry[10]) > 12.0:  # Assuming emission value is in column index 10
                 return 0 # do nothing
             # Check if the emission value is below 12
             elif float(last_entry[10]) == 0:
                 return 2 # do a low flash
-            elif float(last_entry[10]) <= 12.0:  # Assuming emission value is in column index 10
+            elif (float(last_entry[10]) <= 12.0) or (current_time - last_flash_time).total_seconds() >= 4 * 60 * 60:  # Assuming emission value is in column index 10
                 return 3 # turn off and do low flash
             else:
                 return 4  # catch something else
@@ -306,6 +308,8 @@ class Window(tk.Tk):
         self.update_text_labels()
         self.set_notebox_text()
         self.set_user_text(" ")
+        self.set_status("Emission: {}uA \t Last flash: {}".format(self.get_emission(),
+                                                                             self.read_last_line(LOG_FILE)[-2]))
         return 0
     
     def uncheck_all_checkbuttons(self):
