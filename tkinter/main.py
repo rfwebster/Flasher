@@ -62,6 +62,7 @@ class Window(tk.Tk):
         super().__init__()
 
         self.previousentry = None
+        self.protocol("WM_DELETE_WINDOW", self.disable_close)
 
         self.setup_ui()
         self.check_file_exists(LOG_FILE)
@@ -72,9 +73,13 @@ class Window(tk.Tk):
         self.flash_listener = FlashListener(self)
         self.flash_listener.start()
 
+    def disable_close(self):
+        pass
+
     def setup_ui(self):
-        photo = tk.PhotoImage(file = "tkinter/ui/icon.ico")
-        self.iconphoto(False, photo)
+        #photo = tk.PhotoImage(file = "tkinter/ui/icon.ico")
+        #self.iconphoto(False, photo)
+        
         s = ttk.Style()
         s.theme_use('vista')
 
