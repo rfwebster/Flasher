@@ -5,8 +5,6 @@ from datetime import datetime
 import csv
 import os
 
-import threading
-import time
 
 LOG_FILE = 'C:/Data/flasher/log.csv'
 
@@ -21,27 +19,6 @@ except ImportError:
 LOG_FILE = "C:/Data/flasher/log.csv"
 
 
-class FlashListener(threading.Thread):
-    def __init__(self, window):
-        super().__init__()
-        self.window = window
-        self.daemon = True  # Set the thread as a daemon, so it stops when the main program exits
-
-    def run(self):
-        while True:
-            # Determine the flash type based on the current emission and last flash time
-            flash_type = self.window.get_flash_type()
-            self.window.update_instruction_label(flash_type)
-
-            # Update the status label
-            self.window.set_status("Emission: {}uA \t Last flash: {}".format(self.window.get_emission(),
-                                                                             self.window.read_last_line(LOG_FILE)[-2]))
-
-
-            # Sleep for one minute
-            time.sleep(60)
-
-
 class Window(tk.Tk):
     checkbuttons_var = []
 
@@ -49,6 +26,8 @@ class Window(tk.Tk):
     gun = TEM3.GUN3()
     feg = TEM3.FEG3()
     stage = TEM3.Stage3()
+
+    current_emission = 12
 
     csv_header = ["datetime", "user",
         "Sample in?", "LN2 Filled?",
@@ -68,10 +47,27 @@ class Window(tk.Tk):
         self.check_file_exists(LOG_FILE)
         
         self.update_text_labels()
+
+        self.current_emission = self.get_emission()
+        self.last_flash_type = "unknown"
+
+        # Schedule a UI update
+        self.schedule_ui_refresh()
+
+    def schedule_ui_refresh(self):
+        # Schedule the refresh_ui method to run every 30 seconds
+        self.after(30000, self.refresh_ui)
+
+    def refresh_ui(self):
         
-        # Create and start the FlashListener
-        self.flash_listener = FlashListener(self)
-        self.flash_listener.start()
+        self.get_emission()
+        self.get_last_flash_type()
+
+        self.update_text_labels()
+        self.set_status_bar_text()
+
+        # Schedule the next UI refresh
+        self.schedule_ui_refresh()
 
     def disable_close(self):
         pass
@@ -93,12 +89,14 @@ class Window(tk.Tk):
         # Create new font objects with the desired font sizes and fonts
         label_font = font.Font(family="Arial", size=12)
         flash_font = ('Arial', 14)
+        flash_font2 =  ('Arial', 12)
         log_button_font = ('MV Boli', 32)
+
+        # configure styes
         s.configure('TLabel', foreground='black', font=label_font)
-
         s.configure('log.TButton', background='lightblue', foreground='black', font=log_button_font)
-
         s.configure('low_flash.TLabel', background='orange', foreground='black', font=flash_font)
+        s.configure('low_flash2.TLabel', background='orange', foreground='black', font=flash_font2)
         s.configure('high_flash.TLabel', background='yellow', foreground='black', font=flash_font)
         s.configure('no_flash.TLabel', background='green', foreground='black', font=flash_font)
         s.configure('unknown_flash.TLabel', background='red', foreground='black', font=flash_font)
@@ -145,7 +143,7 @@ class Window(tk.Tk):
         self.instruction_label = ttk.Label(self.mainframe, text="Unknown State :`(", style='unknown.TLabel')
         self.instruction_label.pack(fill='both', padx=PAD_X, pady=PAD_Y, ipadx=PAD_X, ipady=PAD_Y)
 
-        self.startButton = ttk.Button(self.mainframe, text="Log it!", command=self.go, style='log.TButton')
+        self.startButton = ttk.Button(self.mainframe, text="Log it!", command=self.logit, style='log.TButton')
         self.startButton.pack(fill='both', padx=PAD_X, pady=2*PAD_Y)
 
         #progress bar
@@ -153,8 +151,9 @@ class Window(tk.Tk):
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         
         
-    def set_status(self, message):
-        self.status_bar.config(text=message)
+    def set_status_bar_text(self):
+        self.status_bar.config(text="Emission: {:.2f}uA \t Last flash: {}".format(self.current_emission,
+                                                                        self.last_flash_type))
 
     def clear_user_text(self, e):
         self.user_edit.delete(0,tk.END)
@@ -168,17 +167,21 @@ class Window(tk.Tk):
         text_content = text_content.replace("\n", "")  # Remove newlines
         return text_content
 
+
     def clear_notebox_text(self, e):
         self.notebox.delete("1.0",tk.END)
     
+
     def set_notebox_text(self):
         self.notebox.delete("1.0", tk.END)
         self.notebox.insert(tk.END, "Notes")
+
 
     def get_notebox_text(self):
         text_content = self.notebox.get("1.0", tk.END)
         text_content = text_content.replace("\n", "")  # Remove newlines
         return text_content
+
 
     def check_file_exists(self, file_path):
         if not os.path.exists(file_path):
@@ -206,7 +209,7 @@ class Window(tk.Tk):
                 writer.writerow(self.csv_header)
 
             #logging.error("Please close the .csv file and restart the program")
-            self.set_status("Please close the csv file and restart the program")
+            print("Please close the csv file and restart the program")
             return None
         
         try:
@@ -216,8 +219,7 @@ class Window(tk.Tk):
                 return last_line
 
         except PermissionError:
-            #logging.error("Please close the .csv file and restart the program")
-            self.set_status("Please close the csv file and restart the program")
+            print("Please close the csv file and restart the program")
             return None
         
     def add_line_to_csv(self, file_path, variables):
@@ -228,7 +230,7 @@ class Window(tk.Tk):
                 writer.writerow(variables)
         except PermissionError: 
             #logging.error("Please close the .csv file and restart the program")
-            self.set_status("Please close the csv file and restart the program")
+            self.print("Please close the csv file and restart the program")
 
 
     def update_instruction_label(self, _status):
@@ -239,10 +241,11 @@ class Window(tk.Tk):
         elif _status == 2:
             self.instruction_label.config(text="Do a Low Flash", style='low_flash.TLabel')
         elif _status == 3:
-            self.instruction_label.config(text="Turn off emission and do a Low Flash", style='low_flash.TLabel')
+            self.instruction_label.config(text="Turn emission off then Low Flash", style='low_flash2.TLabel')
         else:
             self.instruction_label.config(text="Unknown status :\'(", style='unknown_flash.TLabel')
             
+
     def update_text_labels(self):
         # Method to update the date and time and flash type labels
         # based on the last entry in the CSV file
@@ -253,14 +256,17 @@ class Window(tk.Tk):
 
 
     def get_emission(self):
-        return self.gun.GetEmissionCurrentValue()
+        self.current_emission = self.gun.GetEmissionCurrentValue()
+        return self.current_emission
+    
 
-    def get_emission_status(self):
-        return self.feg.GetEmissionOnStatus()
+    def get_last_flash_type(self):
+        self.last_flash_type = self.read_last_line(LOG_FILE)[-2]
+        return self.last_flash_type
 
-    def go(self):
-    #     # Method to retrieve the current values of the user input fields
-    #     # and add a new line to the CSV file using add_line_to_csv, then reset the input fields
+    def logit(self):
+        # Logs the flash just done  Method to retrieve the current values of the user input fields
+        # and add a new line to the CSV file using add_line_to_csv, then reset the input fields
         self.datetime = datetime.now()
         self.datetime = self.datetime.strftime("%Y-%m-%d %H:%M")
         self.ht = self.HT.GetHtValue()
@@ -285,27 +291,38 @@ class Window(tk.Tk):
 
 
     def get_flash_type(self):
-        last_entry = self.read_last_line(LOG_FILE)
+        # determines what the next flash should be high or low based on logic 
+
         last_flash_time  = self.get_last_flash_time()
         current_time = datetime.now()
-        current_emission = self.get_emission()
+        self.get_emission()
     
-        if last_flash_time.date() == current_time.date(): # has there been a flash today
-            # Check if the emission value is above 12
-            if float(last_entry[10]) > 12.0:  # Assuming emission value is in column index 10
-                return 0 # do nothing
-            # Check if the emission value is below 12
-            elif float(last_entry[10]) == 0:
-                return 2 # do a low flash
-            elif (float(last_entry[10]) <= 12.0) or (current_time - last_flash_time).total_seconds() >= 4 * 60 * 60:  # Assuming emission value is in column index 10
-                return 3 # turn off and do low flash
+        if self.current_emission == 0.0:
+            # Emission is off
+            if last_flash_time.date() != current_time.date():
+                # Last flash wasn't today
+                return 1  # Do a high flash
             else:
-                return 4  # catch something else
-        elif float(last_entry[10]) == 0:
-            return 1  # If the times are not from the same day and emission is off, do a high flash
+                return 2  # Do a low flash
+        elif 0.0 < self.current_emission <= 12.0:
+            # Emission is between 0 and 12
+            return 3  # Turn the emission off and do a low flash
+        elif self.current_emission > 12.0:
+            # Emission is on and above 12
+            time_since_last_flash = (current_time - last_flash_time).total_seconds()
+            if time_since_last_flash >= 4 * 60 * 60:
+                # Last flash was more than 4 hours ago
+                return 3  # Turn the emission off and do a low flash
+            else:
+                return 0  # Do nothing
         else:
-            return 4 # catch something else
+            return 4  # Unknown state
 
+
+    def uncheck_all_checkbuttons(self):
+        # implementation to uncheck all checkboxes
+        for checkbutton_var in self.checkbuttons_var:
+            checkbutton_var.set(False)
 
     def reset(self):
         # implementation to clear the user input fields and uncheck the checkboxes
@@ -313,14 +330,9 @@ class Window(tk.Tk):
         self.update_text_labels()
         self.set_notebox_text()
         self.set_user_text(" ")
-        self.set_status("Emission: {}uA \t Last flash: {}".format(self.get_emission(),
-                                                                             self.read_last_line(LOG_FILE)[-2]))
+        self.set_status_bar_text()
         return 0
     
-    def uncheck_all_checkbuttons(self):
-        # implementation to uncheck all checkboxes
-        for checkbutton_var in self.checkbuttons_var:
-            checkbutton_var.set(False)
 
 
 if __name__ == "__main__":
