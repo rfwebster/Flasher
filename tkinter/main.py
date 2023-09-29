@@ -11,7 +11,7 @@ LOG_FILE = 'C:/Data/flasher/log.csv'
 _status = 0  # online
 try:
     from PyJEM import detector, TEM3
-    TEM3.connect()
+    #TEM3.connect()
 except ImportError:
     from PyJEM.offline import detector, TEM3
     _status = 1  # offline
